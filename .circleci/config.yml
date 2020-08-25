@@ -1,0 +1,22 @@
+version: 2.1
+orbs:
+  heroku: circleci/heroku@1.2.2
+
+jobs:
+  deploy:
+    executor: heroku/default
+    steps:
+      - checkout
+      - heroku/install
+      - setup_remote_docker
+      - run:
+          command: |
+            cd server
+            heroku container:login
+            heroku container:push web --app=ar-kitect
+            heroku container:release web --app=ar-kitect
+
+workflows:
+  build:
+    jobs:
+      - deploy
