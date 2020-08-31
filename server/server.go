@@ -47,18 +47,6 @@ func newMiddleware(h http.Handler) *middleware {
 	return &middleware{h}
 }
 
-func expireFiles(fnames []string) {
-	time.Sleep(1 * time.Hour)
-	var fname string
-	for _, f := range fnames {
-		fname = "./models/" + f
-		if _, err := os.Stat(fname); err != nil {
-			_ = os.Remove(fname)
-			fmt.Println(fname)
-		}
-	}
-}
-
 func (m *message) receiveFiles() (string, error) {
 	namegen := haikunator.New(time.Now().UTC().UnixNano())
 	randname := namegen.Haikunate()
@@ -82,7 +70,7 @@ func (m *message) receiveFiles() (string, error) {
 		if part.FileName() == "" {
 			continue
 		}
-		thisfname := randname + extractFileNameWithoutExtension(part.FileName())
+		thisfname := fmt.Sprintf("%s.%s", randname, filepath.Ext(part.FileName()))
 		m.FileNames = append(m.FileNames, thisfname)
 
 		log.Printf("filename: %s", thisfname)
@@ -96,11 +84,12 @@ func (m *message) receiveFiles() (string, error) {
 	return "success", nil
 }
 
-func extractFileNameWithoutExtension(fname string) string {
+func ExtractFileNameWithoutExtension(fname string) string {
 	split := strings.Split(fname, ".")
 	return strings.Join(split[:len(split)-1], ".")
 }
-func changeFileNameExtension(fname string, extn string) string {
+
+func ChangeFileNameExtension(fname string, extn string) string {
 	split := strings.Split(fname, ".")
 	joined := strings.Join(split[:len(split)-1], ".")
 	return fmt.Sprintf("%s.%s", joined, extn)
@@ -149,12 +138,13 @@ func usdzHandler(w http.ResponseWriter, req *http.Request) {
 		defer os.Remove(fnm)
 	}
 
-	if t.FileFormat == "obj" {
+	if t.FileFormat == OBJ {
 		ok := convertOBJtoGLTF(w, fname, t)
+		fname = ExtractFileNameWithoutExtension(fname)
 		if !ok {
 			return
 		}
-	} else if t.FileFormat == "fbx" {
+	} else if t.FileFormat == FBX {
 		ok := convertFBXtoGLTF(w, fname)
 		if !ok {
 			return
@@ -168,11 +158,6 @@ func usdzHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	log.Println("convert to usdz successful")
-
-	go expireFiles([]string{
-		fmt.Sprintf("%s.%s", fname, GLTF),
-		fmt.Sprintf("%s.%s", fname, USDZ),
-	})
 }
 
 func convertOBJtoGLTF(w http.ResponseWriter, fname string, t message) bool {
@@ -181,14 +166,14 @@ func convertOBJtoGLTF(w http.ResponseWriter, fname string, t message) bool {
 		fname = t.FileNames[1]
 	}
 	log.Println("converting obj file")
-	commandArgs = []string{"-i", fname, "-o", "./models/" + strings.TrimSuffix(fname, ".obj") + ".gltf"}
+	commandArgs = []string{"-i", fname, "-o", fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF))}
 	_, err := exec.Command(OBJ_TO_GLTF, commandArgs...).Output()
 	if err != nil {
 		log.Println(err)
 		_, _ = fmt.Fprintln(w, "failed to convert to gltf")
 		return false
 	}
-	fname = strings.TrimSuffix(fname, ".obj")
+
 	return true
 }
 
@@ -201,7 +186,7 @@ func convertFBXtoGLTF(w http.ResponseWriter, fname string) bool {
 		"-i",
 		fname,
 		"-o",
-		fmt.Sprintf("./models/%s", changeFileNameExtension(fname, GLTF)),
+		fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF)),
 	}
 	msg, err := exec.Command(FBX_TO_GLTF, commandArgs...).Output()
 	if err != nil {
@@ -221,31 +206,12 @@ func convertToUSDZ(w http.ResponseWriter, fname string) bool {
 	_, err := exec.Command(GLTF_TO_USDZ, commandArgs...).Output()
 	if err != nil {
 		log.Println(err)
-		_, _ = fmt.Fprint(w, "failed to convert to usdz")
-		_, _ = fmt.Fprint(w, fname)
+		_, _ = fmt.Fprintf(w, "failed to convert to usdz %s\n%s", fname, err)
 		return false
 	}
 
 	_, _ = fmt.Fprintln(w, fname)
 	return true
-}
-
-func main() {
-	port := fmt.Sprintf(":%s", os.Getenv(SERVER_PORT))
-	staticPath, _ := os.LookupEnv(APP_STATIC_PATH)
-	modelsPath, _ := os.LookupEnv(MODELS_PATH)
-
-	pathsMustExist(staticPath, modelsPath)
-	log.Printf("static path %s, models path %s", staticPath, modelsPath)
-
-	server := createServer(modelsPath, staticPath, port)
-
-	log.Printf("starting server on port %s", port)
-
-	err := server.ListenAndServe()
-	if err != nil {
-		log.Fatal(err)
-	}
 }
 
 func pathsMustExist(paths ...string) {
@@ -256,22 +222,6 @@ func pathsMustExist(paths ...string) {
 		}
 		log.Println(p)
 	}
-}
-func createServer(modelsPath string, staticPath string, port string) *http.Server {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api", usdzHandler)
-	mux.HandleFunc("/headers", headers)
-	mux.Handle("/models/", modelsHandler(modelsPath))
-	mux.HandleFunc("/", indexHandler(staticPath))
-	mux.Handle("/js/", dirHandler(staticPath, "js"))
-	mux.Handle("/css/", dirHandler(staticPath, "css"))
-	mux.Handle("/img/", dirHandler(staticPath, "img"))
-	mainMux := newMiddleware(mux)
-	server := &http.Server{
-		Addr:    port,
-		Handler: mainMux,
-	}
-	return server
 }
 
 func indexHandler(staticPath string) func(http.ResponseWriter, *http.Request) {
@@ -300,5 +250,40 @@ func headers(w http.ResponseWriter, req *http.Request) {
 		for _, h := range headers {
 			_, _ = fmt.Fprintf(w, "%v: %v\n", name, h)
 		}
+	}
+}
+
+func createServer(modelsPath string, staticPath string, port string) *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api", usdzHandler)
+	mux.HandleFunc("/headers", headers)
+	mux.Handle("/models/", modelsHandler(modelsPath))
+	mux.HandleFunc("/", indexHandler(staticPath))
+	mux.Handle("/js/", dirHandler(staticPath, "js"))
+	mux.Handle("/css/", dirHandler(staticPath, "css"))
+	mux.Handle("/img/", dirHandler(staticPath, "img"))
+	mainMux := newMiddleware(mux)
+	server := &http.Server{
+		Addr:    port,
+		Handler: mainMux,
+	}
+	return server
+}
+
+func main() {
+	port := fmt.Sprintf(":%s", os.Getenv(SERVER_PORT))
+	staticPath, _ := os.LookupEnv(APP_STATIC_PATH)
+	modelsPath, _ := os.LookupEnv(MODELS_PATH)
+
+	pathsMustExist(staticPath, modelsPath)
+	log.Printf("static path %s, models path %s", staticPath, modelsPath)
+
+	server := createServer(modelsPath, staticPath, port)
+
+	log.Printf("starting server on port %s", port)
+
+	err := server.ListenAndServe()
+	if err != nil {
+		log.Fatal(err)
 	}
 }
