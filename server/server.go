@@ -70,7 +70,7 @@ func (m *message) receiveFiles() (string, error) {
 		if part.FileName() == "" {
 			continue
 		}
-		thisfname := fmt.Sprintf("%s.%s", randname, filepath.Ext(part.FileName()))
+		thisfname := fmt.Sprintf("%s%s", randname, filepath.Ext(part.FileName()))
 		m.FileNames = append(m.FileNames, thisfname)
 
 		log.Printf("filename: %s", thisfname)
