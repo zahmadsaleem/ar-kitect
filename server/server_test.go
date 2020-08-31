@@ -17,3 +17,4 @@ func TestExtractFileNameWithoutExtension(t *testing.T) {
 		t.Errorf("expected %s got %s", expected, got)
 	}
 }
+

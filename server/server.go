@@ -96,7 +96,6 @@ func ChangeFileNameExtension(fname string, extn string) string {
 }
 
 func (m *message) writeToFile() (string, error) {
-
 	msg, err := m.receiveFiles()
 	if err != nil {
 		return msg, err
@@ -104,7 +103,7 @@ func (m *message) writeToFile() (string, error) {
 	return "success", nil
 }
 
-func usdzHandler(w http.ResponseWriter, req *http.Request) {
+func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 	var t message
 	t.FileContent = *req
 	t.FileFormat = req.URL.Query().Get("mode")
@@ -139,20 +138,20 @@ func usdzHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if t.FileFormat == OBJ {
-		ok := convertOBJtoGLTF(w, fname, t)
+		ok := ConvertOBJtoGLTF(w, fname, t)
 		fname = ExtractFileNameWithoutExtension(fname)
 		if !ok {
 			return
 		}
 	} else if t.FileFormat == FBX {
-		ok := convertFBXtoGLTF(w, fname)
+		ok := ConvertFBXtoGLTF(w, fname)
 		if !ok {
 			return
 		}
 	}
 	log.Println("convert to gltf successful")
 
-	ok := convertToUSDZ(w, fname)
+	ok := ConvertToUSDZ(w, fname)
 	if !ok {
 		return
 	}
@@ -160,7 +159,7 @@ func usdzHandler(w http.ResponseWriter, req *http.Request) {
 	log.Println("convert to usdz successful")
 }
 
-func convertOBJtoGLTF(w http.ResponseWriter, fname string, t message) bool {
+func ConvertOBJtoGLTF(w http.ResponseWriter, fname string, t message) bool {
 	var commandArgs []string
 	if !strings.HasSuffix(fname, ".obj") {
 		fname = t.FileNames[1]
@@ -177,7 +176,7 @@ func convertOBJtoGLTF(w http.ResponseWriter, fname string, t message) bool {
 	return true
 }
 
-func convertFBXtoGLTF(w http.ResponseWriter, fname string) bool {
+func ConvertFBXtoGLTF(w http.ResponseWriter, fname string) bool {
 	var commandArgs []string
 	var msg []byte
 	log.Println("converting file format fbx")
@@ -190,14 +189,14 @@ func convertFBXtoGLTF(w http.ResponseWriter, fname string) bool {
 	}
 	msg, err := exec.Command(FBX_TO_GLTF, commandArgs...).Output()
 	if err != nil {
-		log.Println(string(msg))
+		log.Printf("FBX_TO_GLTF error, %s\n",string(msg))
 		_, _ = fmt.Fprintln(w, "failed to convert to gltf")
 		return false
 	}
 	return true
 }
 
-func convertToUSDZ(w http.ResponseWriter, fname string) bool {
+func ConvertToUSDZ(w http.ResponseWriter, fname string) bool {
 	var commandArgs []string
 	commandArgs = []string{
 		fmt.Sprintf("./models/%s.%s", fname, GLTF),
@@ -244,7 +243,7 @@ func dirHandler(staticPath string, subdir string) http.Handler {
 	)
 }
 
-func headers(w http.ResponseWriter, req *http.Request) {
+func IncomingHeadersHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("headers requested")
 	for name, headers := range req.Header {
 		for _, h := range headers {
@@ -253,10 +252,10 @@ func headers(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func createServer(modelsPath string, staticPath string, port string) *http.Server {
+func CreateServer(modelsPath string, staticPath string, port string) *http.Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api", usdzHandler)
-	mux.HandleFunc("/headers", headers)
+	mux.HandleFunc("/api", ConvertHandler)
+	mux.HandleFunc("/headers", IncomingHeadersHandler)
 	mux.Handle("/models/", modelsHandler(modelsPath))
 	mux.HandleFunc("/", indexHandler(staticPath))
 	mux.Handle("/js/", dirHandler(staticPath, "js"))
@@ -278,7 +277,7 @@ func main() {
 	pathsMustExist(staticPath, modelsPath)
 	log.Printf("static path %s, models path %s", staticPath, modelsPath)
 
-	server := createServer(modelsPath, staticPath, port)
+	server := CreateServer(modelsPath, staticPath, port)
 
 	log.Printf("starting server on port %s", port)
 
