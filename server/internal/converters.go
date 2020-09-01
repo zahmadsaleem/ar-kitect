@@ -51,7 +51,7 @@ func ConvertFBXtoGLTF(fname string) (res Result) {
 	return
 }
 
-func ConvertToUSDZ(fname string) (res Result) {
+func ConvertGLTFtoUSDZ(fname string) (res Result) {
 	var commandArgs []string
 	commandArgs = []string{
 		fmt.Sprintf("./models/%s.%s", fname, GLTF),
@@ -68,4 +68,3 @@ func ConvertToUSDZ(fname string) (res Result) {
 	res.Message = fname
 	return
 }
-
