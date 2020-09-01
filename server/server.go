@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +15,7 @@ import (
 	"ar-kitect/server/haikunator"
 )
 
-var (
+const (
 	OBJ             = "obj"
 	FBX             = "fbx"
 	GLTF            = "gltf"
@@ -27,7 +28,12 @@ var (
 	SERVER_PORT     = "PORT"
 )
 
-type message struct {
+type Result struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type FormFileData struct {
 	FileFormat  string
 	FileContent http.Request
 	FileNames   []string
@@ -47,14 +53,15 @@ func newMiddleware(h http.Handler) *middleware {
 	return &middleware{h}
 }
 
-func (m *message) receiveFiles() (string, error) {
+func (m *FormFileData) receiveFiles() (res Result) {
 	namegen := haikunator.New(time.Now().UTC().UnixNano())
 	randname := namegen.Haikunate()
 	m.FileNames = []string{}
 	reader, err := m.FileContent.MultipartReader()
 	if err != nil {
-		log.Println(err)
-		return "something wrong with multipart", err
+		res.Message = "something wrong with multipart"
+		log.Printf("%s\n%s", res.Message, err)
+		return
 	}
 
 	for {
@@ -62,26 +69,35 @@ func (m *message) receiveFiles() (string, error) {
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
-			log.Println(err)
+			res.Message = "error reading multipart"
+			log.Printf("%s\n%s", res.Message, err)
 			break
 		}
+
 		defer part.Close()
+
 		if part.FileName() == "" {
 			continue
 		}
+
 		thisfname := fmt.Sprintf("%s%s", randname, filepath.Ext(part.FileName()))
 		m.FileNames = append(m.FileNames, thisfname)
 
 		log.Printf("filename: %s", thisfname)
 		file, err := os.Create(thisfname)
 		if err != nil {
-			return "failed to write file", err
+			res.Message ="failed to write file"
+			log.Printf("%s\n%s", res.Message, err)
+			return
 		}
 		defer file.Close()
+
 		_, _ = io.Copy(file, part)
 	}
-	return "success", nil
+	res.Success = true
+	return
 }
 
 func ExtractFileNameWithoutExtension(fname string) string {
@@ -95,41 +111,38 @@ func ChangeFileNameExtension(fname string, extn string) string {
 	return fmt.Sprintf("%s.%s", joined, extn)
 }
 
-func (m *message) writeToFile() (string, error) {
-	msg, err := m.receiveFiles()
-	if err != nil {
-		return msg, err
-	}
-	return "success", nil
-}
-
 func ConvertHandler(w http.ResponseWriter, req *http.Request) {
-	var t message
+	var t FormFileData
+	var res Result
+	defer func() {
+		w.Header().Set("Content-Type", "application/json")
+		err := json.NewEncoder(w).Encode(res)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}()
 	t.FileContent = *req
 	t.FileFormat = req.URL.Query().Get("mode")
-	if t.FileFormat != OBJ {
-		if t.FileFormat != FBX {
-			log.Println("mode parameter invalid")
-			_, _ = fmt.Fprintf(w, "mode parameter invalid")
-			return
-		}
+	if t.FileFormat != OBJ && t.FileFormat != FBX {
+		res.Message = "mode parameter invalid"
+		log.Println(res.Message)
+		return
 	}
 
-	msg, err := t.writeToFile()
-	if err != nil {
-		log.Println("failed to create obj")
-		_, _ = fmt.Fprintln(w, "failed to create obj :"+msg)
+	res = t.receiveFiles()
+	if !res.Success {
+		log.Printf("failed to write obj\n %s", res.Message)
+		res.Message = "failed to write obj"
 		return
 	}
 
 	if len(t.FileNames) == 0 {
-		log.Println("missing attachments")
-		_, _ = fmt.Fprintln(w, "missing attachments")
+		res.Message = "missing attachments"
+		log.Println(res.Message)
 		return
 	}
 
 	fname := t.FileNames[0]
-
 	log.Printf("fname: %s, FileNames : %v, length: %d", fname, t.FileNames, len(t.FileNames))
 
 	// remove received files
@@ -138,45 +151,49 @@ func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if t.FileFormat == OBJ {
-		ok := ConvertOBJtoGLTF(w, fname, t)
-		fname = ExtractFileNameWithoutExtension(fname)
-		if !ok {
+		res = ConvertOBJtoGLTF(fname, t)
+		if !res.Success {
 			return
 		}
 	} else if t.FileFormat == FBX {
-		ok := ConvertFBXtoGLTF(w, fname)
-		if !ok {
+		res = ConvertFBXtoGLTF(fname)
+		if !res.Success {
 			return
 		}
 	}
-	log.Println("convert to gltf successful")
 
-	ok := ConvertToUSDZ(w, fname)
-	if !ok {
+	log.Println("convert to gltf successful")
+	fname = ExtractFileNameWithoutExtension(fname)
+
+	res = ConvertToUSDZ(fname)
+	if !res.Success {
 		return
 	}
 
 	log.Println("convert to usdz successful")
 }
 
-func ConvertOBJtoGLTF(w http.ResponseWriter, fname string, t message) bool {
+func ConvertOBJtoGLTF(fname string, t FormFileData) (res Result) {
 	var commandArgs []string
-	if !strings.HasSuffix(fname, ".obj") {
+	// TODO: iterate through all files
+	if filepath.Ext(fname) == ".obj" {
 		fname = t.FileNames[1]
 	}
-	log.Println("converting obj file")
+	log.Println("converting OBJ file")
 	commandArgs = []string{"-i", fname, "-o", fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF))}
 	_, err := exec.Command(OBJ_TO_GLTF, commandArgs...).Output()
 	if err != nil {
-		log.Println(err)
-		_, _ = fmt.Fprintln(w, "failed to convert to gltf")
-		return false
+		res.Message = "failed to convert to GLTF"
+		log.Printf("%s %s", res.Message, err)
+		return
 	}
 
-	return true
+	res.Success = true
+	res.Message = "successfully converted OBJ to GLTF"
+	return
 }
 
-func ConvertFBXtoGLTF(w http.ResponseWriter, fname string) bool {
+func ConvertFBXtoGLTF(fname string) (res Result) {
 	var commandArgs []string
 	var msg []byte
 	log.Println("converting file format fbx")
@@ -189,14 +206,15 @@ func ConvertFBXtoGLTF(w http.ResponseWriter, fname string) bool {
 	}
 	msg, err := exec.Command(FBX_TO_GLTF, commandArgs...).Output()
 	if err != nil {
-		log.Printf("FBX_TO_GLTF error, %s\n",string(msg))
-		_, _ = fmt.Fprintln(w, "failed to convert to gltf")
-		return false
+		log.Printf("FBX_TO_GLTF error, %s\n", string(msg))
+		res.Message = "failed to convert to gltf"
+		return
 	}
-	return true
+	res.Success = true
+	return
 }
 
-func ConvertToUSDZ(w http.ResponseWriter, fname string) bool {
+func ConvertToUSDZ(fname string) (res Result) {
 	var commandArgs []string
 	commandArgs = []string{
 		fmt.Sprintf("./models/%s.%s", fname, GLTF),
@@ -204,13 +222,14 @@ func ConvertToUSDZ(w http.ResponseWriter, fname string) bool {
 	}
 	_, err := exec.Command(GLTF_TO_USDZ, commandArgs...).Output()
 	if err != nil {
-		log.Println(err)
-		_, _ = fmt.Fprintf(w, "failed to convert to usdz %s\n%s", fname, err)
-		return false
+		log.Printf("failed to convert to usdz %s\n%s", fname, err)
+		res.Message = fmt.Sprintf("failed to convert `%s` to usdz", fname)
+		return
 	}
 
-	_, _ = fmt.Fprintln(w, fname)
-	return true
+	res.Success = true
+	res.Message = fname
+	return
 }
 
 func pathsMustExist(paths ...string) {
