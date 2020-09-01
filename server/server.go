@@ -35,7 +35,6 @@ type Result struct {
 
 type FormFileData struct {
 	FileFormat  string
-	FileContent http.Request
 	FileNames   []string
 }
 
@@ -53,11 +52,11 @@ func newMiddleware(h http.Handler) *middleware {
 	return &middleware{h}
 }
 
-func (m *FormFileData) receiveFiles() (res Result) {
+func (m *FormFileData) receiveFiles(req *http.Request) (res Result) {
 	namegen := haikunator.New(time.Now().UTC().UnixNano())
 	randname := namegen.Haikunate()
-	m.FileNames = []string{}
-	reader, err := m.FileContent.MultipartReader()
+
+	reader, err := req.MultipartReader()
 	if err != nil {
 		res.Message = "something wrong with multipart"
 		log.Printf("%s\n%s", res.Message, err)
@@ -123,7 +122,6 @@ func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	t.FileContent = *req
 	t.FileFormat = req.URL.Query().Get("mode")
 	if t.FileFormat != OBJ && t.FileFormat != FBX {
 		res.Message = "mode parameter invalid"
@@ -131,7 +129,7 @@ func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	res = t.receiveFiles()
+	res = t.receiveFiles(req)
 	if !res.Success {
 		log.Printf("failed to write obj\n %s", res.Message)
 		res.Message = "failed to write obj"
@@ -146,8 +144,7 @@ func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 
 	fname := t.FileNames[0]
 	log.Printf("fname: %s, FileNames : %v, length: %d", fname, t.FileNames, len(t.FileNames))
-
-	// remove received files
+	// remove received files after conversion
 	for _, fnm := range t.FileNames {
 		defer os.Remove(fnm)
 	}
