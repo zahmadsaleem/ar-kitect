@@ -16,16 +16,16 @@ import (
 )
 
 const (
-	OBJ             = "obj"
-	FBX             = "fbx"
-	GLTF            = "gltf"
-	USDZ            = "usdz"
-	OBJ_TO_GLTF     = "obj2gltf"
-	FBX_TO_GLTF     = "./FBX2glTF"
-	GLTF_TO_USDZ    = "usd_from_gltf"
-	APP_STATIC_PATH = "APP_STATIC_PATH"
-	MODELS_PATH     = "MODELS_PATH"
-	SERVER_PORT     = "PORT"
+	OBJ                 = "obj"
+	FBX                 = "fbx"
+	GLTF                = "gltf"
+	USDZ                = "usdz"
+	OBJtoGLTF           = "obj2gltf"
+	FBXtoGLTF           = "./FBX2glTF"
+	GLTFtoUSDZ          = "usd_from_gltf"
+	AppStaticPathEnvVar = "AppStaticPathEnvVar"
+	ModelsPathEnvVar    = "ModelsPathEnvVar"
+	ServerPortEnvVar    = "PORT"
 )
 
 type Result struct {
@@ -88,7 +88,7 @@ func (m *FormFileData) receiveFiles() (res Result) {
 		log.Printf("filename: %s", thisfname)
 		file, err := os.Create(thisfname)
 		if err != nil {
-			res.Message ="failed to write file"
+			res.Message = "failed to write file"
 			log.Printf("%s\n%s", res.Message, err)
 			return
 		}
@@ -96,6 +96,7 @@ func (m *FormFileData) receiveFiles() (res Result) {
 
 		_, _ = io.Copy(file, part)
 	}
+
 	res.Success = true
 	return
 }
@@ -121,6 +122,7 @@ func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}()
+
 	t.FileContent = *req
 	t.FileFormat = req.URL.Query().Get("mode")
 	if t.FileFormat != OBJ && t.FileFormat != FBX {
@@ -151,18 +153,20 @@ func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if t.FileFormat == OBJ {
-		res = ConvertOBJtoGLTF(fname, t)
+		log.Println("converting OBJ to GLTF")
+		res = ConvertOBJtoGLTF(fname)
 		if !res.Success {
 			return
 		}
 	} else if t.FileFormat == FBX {
+		log.Println("converting FBX to GLTF")
 		res = ConvertFBXtoGLTF(fname)
 		if !res.Success {
 			return
 		}
 	}
 
-	log.Println("convert to gltf successful")
+	log.Println("convert to GLTF successful")
 	fname = ExtractFileNameWithoutExtension(fname)
 
 	res = ConvertToUSDZ(fname)
@@ -170,18 +174,21 @@ func ConvertHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Println("convert to usdz successful")
+	log.Println("convert to USDZ successful")
 }
 
-func ConvertOBJtoGLTF(fname string, t FormFileData) (res Result) {
+func ConvertOBJtoGLTF(fname string) (res Result) {
 	var commandArgs []string
-	// TODO: iterate through all files
-	if filepath.Ext(fname) == ".obj" {
-		fname = t.FileNames[1]
+
+	fname = fmt.Sprintf("%s.%s", filepath.Base(fname), OBJ)
+
+	commandArgs = []string{
+		"-i",
+		fname,
+		"-o",
+		fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF)),
 	}
-	log.Println("converting OBJ file")
-	commandArgs = []string{"-i", fname, "-o", fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF))}
-	_, err := exec.Command(OBJ_TO_GLTF, commandArgs...).Output()
+	_, err := exec.Command(OBJtoGLTF, commandArgs...).Output()
 	if err != nil {
 		res.Message = "failed to convert to GLTF"
 		log.Printf("%s %s", res.Message, err)
@@ -196,7 +203,7 @@ func ConvertOBJtoGLTF(fname string, t FormFileData) (res Result) {
 func ConvertFBXtoGLTF(fname string) (res Result) {
 	var commandArgs []string
 	var msg []byte
-	log.Println("converting file format fbx")
+
 	commandArgs = []string{
 		"--embed",
 		"-i",
@@ -204,9 +211,9 @@ func ConvertFBXtoGLTF(fname string) (res Result) {
 		"-o",
 		fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF)),
 	}
-	msg, err := exec.Command(FBX_TO_GLTF, commandArgs...).Output()
+	msg, err := exec.Command(FBXtoGLTF, commandArgs...).Output()
 	if err != nil {
-		log.Printf("FBX_TO_GLTF error, %s\n", string(msg))
+		log.Printf("FBXtoGLTF error, %s\n", string(msg))
 		res.Message = "failed to convert to gltf"
 		return
 	}
@@ -220,7 +227,7 @@ func ConvertToUSDZ(fname string) (res Result) {
 		fmt.Sprintf("./models/%s.%s", fname, GLTF),
 		fmt.Sprintf("./models/%s.%s", fname, USDZ),
 	}
-	_, err := exec.Command(GLTF_TO_USDZ, commandArgs...).Output()
+	_, err := exec.Command(GLTFtoUSDZ, commandArgs...).Output()
 	if err != nil {
 		log.Printf("failed to convert to usdz %s\n%s", fname, err)
 		res.Message = fmt.Sprintf("failed to convert `%s` to usdz", fname)
@@ -244,6 +251,10 @@ func pathsMustExist(paths ...string) {
 
 func indexHandler(staticPath string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		//if r.URL.Path != "/" {
+		//	http.NotFound(w,r)
+		//	return
+		//}
 		http.ServeFile(w, r, staticPath)
 	}
 }
@@ -289,9 +300,9 @@ func CreateServer(modelsPath string, staticPath string, port string) *http.Serve
 }
 
 func main() {
-	port := fmt.Sprintf(":%s", os.Getenv(SERVER_PORT))
-	staticPath, _ := os.LookupEnv(APP_STATIC_PATH)
-	modelsPath, _ := os.LookupEnv(MODELS_PATH)
+	port := fmt.Sprintf(":%s", os.Getenv(ServerPortEnvVar))
+	staticPath, _ := os.LookupEnv(AppStaticPathEnvVar)
+	modelsPath, _ := os.LookupEnv(ModelsPathEnvVar)
 
 	pathsMustExist(staticPath, modelsPath)
 	log.Printf("static path %s, models path %s", staticPath, modelsPath)
