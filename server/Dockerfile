@@ -5,9 +5,10 @@ RUN apk update && apk add --no-cache git make build-base
 WORKDIR $GOPATH/src/app
 
 COPY go.mod .
-COPY server.go .
-COPY ./haikunator ./haikunator
+COPY internal ./internal
+COPY cmd ./cmd
 
+WORKDIR $GOPATH/src/app/cmd/ar-kitect
 RUN go get -d -v
 
 # CGO_ENABLED=0 is soooo important
@@ -31,7 +32,7 @@ COPY --from=gobuilder /go/bin/server .
 
 COPY ./FBX2glTF .
 COPY ./FBX2glTF .
-COPY ./sample-models ./models
+COPY assets ./models
 
 ENTRYPOINT [ "/usr/bin/env" ]
 

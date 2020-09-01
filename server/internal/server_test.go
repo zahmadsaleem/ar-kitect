@@ -1,6 +1,8 @@
-package main
+package internal
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestChangeFileNameExtension(t *testing.T) {
 	initial := "xyz-a.dsds.gltf"
