@@ -23,8 +23,8 @@ const (
 	OBJtoGLTF           = "obj2gltf"
 	FBXtoGLTF           = "./FBX2glTF"
 	GLTFtoUSDZ          = "usd_from_gltf"
-	AppStaticPathEnvVar = "AppStaticPathEnvVar"
-	ModelsPathEnvVar    = "ModelsPathEnvVar"
+	AppStaticPathEnvVar = "APP_STATIC_PATH"
+	ModelsPathEnvVar    = "MODELS_PATH"
 	ServerPortEnvVar    = "PORT"
 )
 
