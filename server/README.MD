@@ -11,7 +11,7 @@ docker run --env PORT=8080 --env APP_STATIC_PATH=./static --env MODELS_PATH=./mo
 Test the endpoint
 ```
 # convert obj
-curl -X POST 'https://ar-kitect.herokuapp.com?mode=obj' -F f.obj=@'somefilepath/file.obj'
+curl -X POST 'localhost:8080?mode=obj' -F f.obj=@'somefilepath/file.obj'
 # convert fbx
-curl -X POST 'https://ar-kitect.herokuapp.com?mode=fbx' -F f.obj=@'somefilepath/file.fbx'
+curl -X POST 'localhost:8080?mode=fbx' -F f.obj=@'somefilepath/file.fbx'
 ```
