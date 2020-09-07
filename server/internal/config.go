@@ -12,4 +12,3 @@ const (
 	ModelsPathEnvVar    = "MODELS_PATH"
 	ServerPortEnvVar    = "PORT"
 )
-

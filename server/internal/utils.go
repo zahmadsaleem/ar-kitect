@@ -2,17 +2,15 @@ package internal
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
 func ChangeFileNameExtension(fname string, extn string) string {
-	split := strings.Split(fname, ".")
-	joined := strings.Join(split[:len(split)-1], ".")
-	return fmt.Sprintf("%s.%s", joined, extn)
+	base := ExtractFileNameWithoutExtension(fname)
+	return fmt.Sprintf("%s.%s", base, extn)
 }
 
 func ExtractFileNameWithoutExtension(fname string) string {
-	split := strings.Split(fname, ".")
-	return strings.Join(split[:len(split)-1], ".")
+	return strings.TrimSuffix(fname, filepath.Ext(fname))
 }
-

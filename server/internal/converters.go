@@ -7,21 +7,21 @@ import (
 	"path/filepath"
 )
 
-func ConvertOBJtoGLTF(fname string) (res Result) {
+func ConvertOBJtoGLTF(fname string, modelsPath string) (res Result) {
 	var commandArgs []string
 
-	fname = fmt.Sprintf("%s.%s", filepath.Base(fname), OBJ)
+	fname = fmt.Sprintf("%s.%s", ExtractFileNameWithoutExtension(fname), OBJ)
 
 	commandArgs = []string{
 		"-i",
-		fname,
+		filepath.Join(modelsPath,fname),
 		"-o",
-		fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF)),
+		filepath.Join(modelsPath, ChangeFileNameExtension(fname, GLTF)),
 	}
-	_, err := exec.Command(OBJtoGLTF, commandArgs...).Output()
+	msg, err := exec.Command(OBJtoGLTF, commandArgs...).Output()
 	if err != nil {
 		res.Message = "failed to convert to GLTF"
-		log.Printf("%s %s", res.Message, err)
+		log.Printf("%s %s %s", res.Message, err, string(msg))
 		return
 	}
 
@@ -30,16 +30,16 @@ func ConvertOBJtoGLTF(fname string) (res Result) {
 	return
 }
 
-func ConvertFBXtoGLTF(fname string) (res Result) {
+func ConvertFBXtoGLTF(fname string, modelsPath string) (res Result) {
 	var commandArgs []string
 	var msg []byte
 
 	commandArgs = []string{
 		"--embed",
 		"-i",
-		fname,
+		filepath.Join(modelsPath,fname),
 		"-o",
-		fmt.Sprintf("./models/%s", ChangeFileNameExtension(fname, GLTF)),
+		filepath.Join(modelsPath, ChangeFileNameExtension(fname, GLTF)),
 	}
 	msg, err := exec.Command(FBXtoGLTF, commandArgs...).Output()
 	if err != nil {
@@ -51,11 +51,11 @@ func ConvertFBXtoGLTF(fname string) (res Result) {
 	return
 }
 
-func ConvertGLTFtoUSDZ(fname string) (res Result) {
+func ConvertGLTFtoUSDZ(fname string, modelsPath string) (res Result) {
 	var commandArgs []string
 	commandArgs = []string{
-		fmt.Sprintf("./models/%s.%s", fname, GLTF),
-		fmt.Sprintf("./models/%s.%s", fname, USDZ),
+		filepath.Join(modelsPath, fmt.Sprintf("%s.%s", fname, GLTF)),
+		filepath.Join(modelsPath, fmt.Sprintf("%s.%s", fname, USDZ)),
 	}
 	_, err := exec.Command(GLTFtoUSDZ, commandArgs...).Output()
 	if err != nil {

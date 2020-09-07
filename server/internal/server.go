@@ -36,7 +36,7 @@ func newMiddleware(h http.Handler) *middleware {
 	return &middleware{h}
 }
 
-func (m *FormFileData) receiveFiles(req *http.Request) (res Result) {
+func (m *FormFileData) receiveFiles(req *http.Request, modelsPath string) (res Result) {
 	namegen := haikunator.New(time.Now().UTC().UnixNano())
 	randname := namegen.Haikunate()
 
@@ -69,7 +69,7 @@ func (m *FormFileData) receiveFiles(req *http.Request) (res Result) {
 		m.FileNames = append(m.FileNames, thisfname)
 
 		log.Printf("filename: %s", thisfname)
-		file, err := os.Create(thisfname)
+		file, err := os.Create(filepath.Join(modelsPath, thisfname))
 		if err != nil {
 			res.Message = "failed to write file"
 			log.Printf("%s\n%s", res.Message, err)
@@ -86,7 +86,7 @@ func (m *FormFileData) receiveFiles(req *http.Request) (res Result) {
 
 func CreateServer(modelsPath string, staticPath string, port string) *http.Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api", convertHandler)
+	mux.HandleFunc("/api", convertHandler(modelsPath))
 	mux.HandleFunc("/headers", incomingHeadersHandler)
 	mux.Handle("/models/", modelsHandler(modelsPath))
 	mux.HandleFunc("/", indexHandler(staticPath))
